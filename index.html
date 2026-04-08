@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Beth Sauer Team - Listing Manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
+    .fade-in { animation: fadeIn 0.25s ease-out; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
+    .tab-active { border-bottom: 3px solid #2563eb; color: #1e40af; font-weight: 600; }
+    .badge { display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px; border-radius:10px; font-size:11px; font-weight:600; padding:0 6px; }
+    input[type="checkbox"] { accent-color: #2563eb; width:16px; height:16px; cursor:pointer; }
+    .progress-bar { height:6px; border-radius:3px; background:#e5e7eb; overflow:hidden; }
+    .progress-fill { height:100%; border-radius:3px; transition:width 0.3s ease; }
+    .urgency-overdue { background:#fef2f2; border-left:3px solid #ef4444; }
+    .urgency-today { background:#fffbeb; border-left:3px solid #f59e0b; }
+    .urgency-week { background:#eff6ff; border-left:3px solid #3b82f6; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useMemo, useCallback } = React;
+
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+const save = (k,v) => localStorage.setItem(k, JSON.stringify(v));
+const load = (k,f) => { try { const d=localStorage.getItem(k); return d?JSON.parse(d):f; } catch{return f;} };
+
+// ── IMPORTED DATA from Google Sheets ──
+const IMPORTED_PRE_LISTINGS = [
+  { id:'imp_1', address:'4310 Selborne Drive, Greensboro, NC 27410', name:'Erica Spencer', disclosuresSent:'Yes', notes:'around or after october' },
+  { id:'imp_2', address:'605 Holly Ridge Court', name:'Tina Toliver', disclosuresSent:'Yes' },
+  { id:'imp_3', address:'2509 Burch Point', name:'Jan Pursley', disclosuresSent:'Yes' },
+  { id:'imp_4', address:'8508 Rosedale Dr', name:'Shelley Shongut', expectedLiveDate:'2026-05-29', estimatedPrice:'$850k +/-', photosDate:'2026-05-25', mlsInputSheet:'', disclosuresSent:'Yes', disclosuresSigned:'', notes:'Talked to shelley for a while. she will let us know about the auction thing to take the big pieces. waiting on that. so beth and mandiey could do a gameplan. Reel- Beth to get into the Hot Tub' },
+  { id:'imp_5', address:'3382 Rebecca Drive', name:'Shannon Rouse', expectedLiveDate:'', estimatedPrice:'$420-450k', measurements:'will follow up', photosDate:'', mlsInputSheet:'Yes', disclosuresSent:'Yes', notes:'try to call her today or tomorrow- shannon\'s partner came and did a lot of stuff. Main deck to be sanded and painted this week. Mid April target.' },
+];
+
+const IMPORTED_ACTIVE_LISTINGS = [
+  { id:'imp_a1', address:'3205 Timberoak Court', name:'Cole', listDate:'2026-04-02', estimatedPrice:'', weeklyLog:[{id:'w1',date:'2026-04-06',showings:'1',feedbackMissing:'0',overallExposure:'',notes:'Week 1'}] },
+  { id:'imp_a2', address:'5172 Jordan Valley Road, Trinity, NC 27370 Lot#1', name:'', listDate:'2026-04-01', estimatedPrice:'', weeklyLog:[{id:'w1',date:'2026-03-16',showings:'21',feedbackMissing:'',overallExposure:'',notes:''},{id:'w2',date:'2026-03-23',showings:'22',feedbackMissing:'',overallExposure:'',notes:''},{id:'w3',date:'2026-03-30',showings:'23',feedbackMissing:'',overallExposure:'',notes:''},{id:'w4',date:'2026-04-06',showings:'1',feedbackMissing:'',overallExposure:'',notes:''}] },
+  { id:'imp_a3', address:'1004 Gretchen Lane, Greensboro, NC 27410 Unit#A Lot#37', name:'Kim', listDate:'2026-02-10', estimatedPrice:'', weeklyLog:[] },
+  { id:'imp_a4', address:'909 Chatfield Drive, Jamestown, NC 27282 Unit#C Lot#10', name:'Brill', listDate:'2026-04-06', estimatedPrice:'', weeklyLog:[] },
+];
+
+const IMPORTED_CLOSINGS = [
+  { id:'imp_c1', type:'Seller', address:'1113 Century Park Avenue, Kernersville, NC 27284 Lot#10', name:'Kirstin and Denis Radcliffe', olp:'$269,900', pp:'$283,500', dd:'$3,000', ddReceived:'Yes', em:'$0', addlEm:'$1,350', emReceived:'Yes', ddDate:'2026-03-20', contractDate:'2026-03-03', closingDate:'2026-04-15', creditAllowance:'0', inspectionDate:'2026-03-12', appraisalBack:'No', lender:'TowneBank MTG', financingDetails:'Conventional', proceeds:'Proceeds to be wired to Iddings and Thacker PLLC', attorney:'Coltrane and Overfield PLLC', agentAdmin:'Chad Waclawczyck', agentContact:'336 448 9292', closingNotes:'all good- just waiting on Closing schedule', checkedItems:{} },
+  { id:'imp_c2', type:'Buyer', address:'19 Middlefield Court, Greensboro, NC 27455', name:'Bryan and Debbie Brendley', olp:'$650,000', pp:'$655,000', dd:'$0', ddReceived:'Yes', em:'$6,550', addlEm:'$0', emReceived:'Yes', ddDate:'2026-03-14', contractDate:'2026-03-04', closingDate:'2026-04-17', creditAllowance:'0', inspectionDate:'2026-03-11', appraisalBack:'No', lender:'conventional', agentAdmin:'Karen Bolyard', closingNotes:'need itemized list for contractors with the costs = total to 18k. Have a new ddra with list', checkedItems:{} },
+  { id:'imp_c3', type:'Seller', address:'5016 Shadygrove Lane, Greensboro, NC 27407 Lot#51', name:'Jessie and James Jones', olp:'$350,000', pp:'$340,000', dd:'$2,500', ddReceived:'Yes', em:'$0', addlEm:'$0', emReceived:'Yes', ddDate:'2026-03-31', contractDate:'2026-03-10', closingDate:'2026-05-01', creditAllowance:'5000', appraisalBack:'No', lender:'Rocket MTG', financingDetails:'conventional', attorney:'Salem Thacker', agentAdmin:'Francisco Lopez', agentContact:'336 708 2057', closingNotes:'wait on chase', checkedItems:{} },
+  { id:'imp_c4', type:'Buyer', address:'111 Laced Maple Court, Reidsville, NC 27320', name:'Jessie and Mike Jones', olp:'$559,000', pp:'$535,000', dd:'$4,000', ddReceived:'Yes', em:'$2,500', addlEm:'$0', emReceived:'Yes', ddDate:'2026-04-03', contractDate:'2026-03-13', closingDate:'2026-05-05', creditAllowance:'0', inspectionDate:'2026-03-18', appraisalBack:'No', lender:'VA loan', financingDetails:'VA loan- RJ', attorney:'Iddings and Thacker', agentAdmin:'Allison Isley', agentContact:'336 681 5181', closingNotes:'drafted an email - to jessie and mike', checkedItems:{} },
+  { id:'imp_c5', type:'Buyer', address:'3229 Cheswick Drive, Greensboro, NC 27410', name:'Denis and Kirstin Radcliffe', olp:'$389,900', pp:'$390,000', dd:'$4,000', ddReceived:'Yes', em:'$0', addlEm:'$1,000', emReceived:'Yes', ddDate:'2026-04-01', contractDate:'2026-03-16', closingDate:'2026-04-29', creditAllowance:'0', inspectionDate:'2026-03-18', appraisalBack:'No', lender:'VA', attorney:'Iddings and Thacker', agentAdmin:'Shannon Mock', agentContact:'336 681 7630', closingNotes:'Beth to review Shannon\'s update on the repairs. will provide update to kirstin and denis', checkedItems:{} },
+  { id:'imp_c6', type:'Buyer', address:'441 Mashie Drive, Summerfield, NC 27358 Lot#3', name:'Scott Cole', olp:'$874,900', pp:'$874,900', dd:'$15,000', ddReceived:'Yes', em:'$0', addlEm:'$10,000', emReceived:'Yes', ddDate:'2026-04-09', contractDate:'2026-03-18', closingDate:'2026-05-01', homeInspection:'well- 3/25, septic 3/31. home pest and radon- 4/1', appraisalBack:'No', lender:'conventional', attorney:'Iddings and Thacker', agentAdmin:'John Hall III', agentContact:'336 344 0051', closingNotes:'electrician is coming out just to look at the outside on Friday at 8:45. reaching out to agent to ask, getting quotes for exterior lighting', checkedItems:{} },
+  { id:'imp_c7', type:'Seller', address:'3 Sawmill Court, Greensboro, NC 27407 Lot#14', name:'Bryan and Debbie Brendley', olp:'$419,900', pp:'$419,900', dd:'$3,000', ddReceived:'Yes', em:'$2,000', addlEm:'$0', emReceived:'Yes', ddDate:'2026-04-14', contractDate:'2026-03-25', closingDate:'2026-05-07', creditAllowance:'12000', appraisalBack:'No', lender:'Helms Mortgage- conventional', attorney:'Allen Tate', agentAdmin:'Jeff Smith', closingNotes:'inspection tomorrow.', checkedItems:{} },
+  { id:'imp_c8', type:'Seller', address:'3913 Colony Ridge Court, Jamestown, NC 27282', name:'Kim Dockery (Catherine)', olp:'$339,900', pp:'$334,000', dd:'$1,500', ddReceived:'No', em:'$500', addlEm:'$0', emReceived:'No', ddDate:'2026-04-22', contractDate:'2026-03-31', closingDate:'2026-05-06', creditAllowance:'0', appraisalBack:'No', lender:'First Citizen', financingDetails:'First Citizen', attorney:'Hamby and Hamby', agentAdmin:'Michael Kelly', agentContact:'8288516698', checkedItems:{} },
+];
+const todayStr = () => new Date().toISOString().split('T')[0];
+const daysBetween = (a,b) => { if(!a||!b) return 0; return Math.floor((new Date(b)-new Date(a))/86400000); };
+const addDays = (d,n) => { if(!d) return null; const dt=new Date(d+'T12:00:00'); dt.setDate(dt.getDate()+n); return dt.toISOString().split('T')[0]; };
+const fmtDate = (d) => { if(!d) return '—'; return new Date(d+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); };
+const fmtShort = (d) => { if(!d) return '—'; return new Date(d+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}); };
+
+// ── Task urgency helper ──
+function getUrgency(dueDate, isChecked) {
+  if (!dueDate || isChecked) return 'none';
+  const diff = daysBetween(todayStr(), dueDate);
+  if (diff < 0) return 'overdue';
+  if (diff === 0) return 'today';
+  if (diff <= 7) return 'week';
+  return 'none';
+}
+const urgencyClass = { overdue:'urgency-overdue', today:'urgency-today', week:'urgency-week', none:'' };
+const urgencyLabel = { overdue:'Overdue', today:'Due Today', week:'Due This Week', none:'' };
+const urgencyColor = { overdue:'text-red-600', today:'text-amber-600', week:'text-blue-600', none:'text-gray-400' };
+const urgencyBg = { overdue:'bg-red-50', today:'bg-amber-50', week:'bg-blue-50', none:'' };
+
+// ── Pre-Listing Fields ──
+const PRE_LISTING_FIELDS = [
+  { key:'name', label:'Seller Name', type:'text' },
+  { key:'address', label:'Property Address', type:'text' },
+  { key:'expectedLiveDate', label:'Expected Live Date', type:'date' },
+  { key:'estimatedPrice', label:'Estimated Price', type:'text' },
+  { key:'measurements', label:'Measurements', type:'select', options:['','Needed','Scheduled','Done'] },
+  { key:'stagingDate', label:'Staging Date', type:'date' },
+  { key:'photosDate', label:'Photos Date', type:'date' },
+  { key:'mlsInputSheet', label:'MLS Input Sheet', type:'select', options:['','Not Started','In Progress','Done'] },
+  { key:'disclosuresSent', label:'Disclosures Sent', type:'select', options:['','No','Yes'] },
+  { key:'disclosuresSigned', label:'Disclosures Signed', type:'select', options:['','No','Yes'] },
+  { key:'lockbox', label:'Lockbox', type:'select', options:['','No','Yes'] },
+  { key:'sign', label:'Sign', type:'select', options:['','No','Yes'] },
+  { key:'repairNotes', label:'Repair & Cleaning Notes', type:'textarea' },
+  { key:'openHouse', label:'Open House', type:'text' },
+  { key:'socialMedia', label:'Social Media', type:'select', options:['','Not Started','Posted','Done'] },
+  { key:'primaryBuyer', label:'Primary Ideal Buyer', type:'text' },
+  { key:'secondaryBuyer', label:'Secondary Ideal Buyer', type:'text' },
+  { key:'corePositioning', label:'Core Positioning Line', type:'text' },
+  { key:'reelHooks', label:'Reel Hook 1,2,3', type:'text' },
+  { key:'visualAnchors', label:'Visual Anchor 1,2,3', type:'text' },
+  { key:'priceImprovement', label:'Price Improvement Angle', type:'text' },
+  { key:'reelPosted', label:'Listing Reel Posted', type:'select', options:['','No','Yes'] },
+  { key:'notes', label:'Notes', type:'textarea' },
+];
+
+// ── Closing Overview Fields ──
+const CLOSING_OVERVIEW_FIELDS = [
+  { key:'type', label:'Type', type:'select', options:['Seller','Buyer','Buyer NC'] },
+  { key:'olp', label:'Original List Price', type:'text' },
+  { key:'pp', label:'Purchase Price', type:'text' },
+  { key:'dd', label:'Due Diligence $', type:'text' },
+  { key:'ddReceived', label:'DD Received?', type:'select', options:['','No','Yes'] },
+  { key:'em', label:'Earnest Money', type:'text' },
+  { key:'addlEm', label:'Additional EM', type:'text' },
+  { key:'emReceived', label:'EM Received?', type:'select', options:['','No','Yes'] },
+  { key:'ddDate', label:'DD Date', type:'date' },
+  { key:'contractDate', label:'Contract Date', type:'date' },
+  { key:'closingDate', label:'Closing Date', type:'date' },
+  { key:'creditAllowance', label:'Credit/Allowance', type:'text' },
+  { key:'homeInspection', label:'Home Inspection', type:'text' },
+  { key:'inspectionDate', label:'Inspection Date', type:'date' },
+  { key:'appraisal', label:'Appraisal', type:'select', options:['','Ordered','Scheduled','Done','N/A'] },
+  { key:'appraisalBack', label:'Appraisal Back?', type:'select', options:['','No','Yes'] },
+  { key:'keys', label:'Keys?', type:'select', options:['','No','Yes'] },
+  { key:'walkthroughDate', label:'Walkthrough Date', type:'date' },
+  { key:'stagingPickup', label:'Pick Up Staging Date', type:'date' },
+  { key:'lender', label:'Lender', type:'text' },
+  { key:'financingDetails', label:'Financing Details', type:'text' },
+  { key:'sellerAttending', label:'Seller Attending Closing?', type:'text' },
+  { key:'proceeds', label:'How receiving proceeds?', type:'text' },
+  { key:'cdSigning', label:'Who signing CD?', type:'text' },
+  { key:'movingDate', label:'Moving Date', type:'date' },
+  { key:'attorney', label:'Attorney', type:'text' },
+  { key:'agentAdmin', label:'Agent/Admin', type:'text' },
+  { key:'agentContact', label:'Agent Contact Info', type:'text' },
+  { key:'closingNotes', label:'Notes', type:'textarea' },
+  { key:'toDo', label:'To Do', type:'textarea' },
+];
+
+// ── TIME-SENSITIVE Closing Checklists (with anchor dates and offsets) ──
+const CLOSING_CHECKLIST_SECTIONS = {
+  Seller: [
+    { section:'New Under Contract', items:[
+      { label:'Complete Seller Info Sheet for File', anchor:'contractDate', offset:0 },
+      { label:'Change MLS Status', anchor:'contractDate', offset:0 },
+      { label:'Send Smart Plan "We\'re under contract - Seller"', anchor:'contractDate', offset:0 },
+      { label:'Introduction Call to Sellers', anchor:'contractDate', offset:1 },
+      { label:'Send Intro Email to Sellers', anchor:'contractDate', offset:1 },
+      { label:'Intro Email to Buyer\'s Agent', anchor:'contractDate', offset:1 },
+      { label:'Intro Call to Buyers Agent', anchor:'contractDate', offset:2 },
+      { label:'Send Executed OTP to Sellers', anchor:'contractDate', offset:1 },
+      { label:'Add Activity "Collect Addl. EM"', anchor:'contractDate', offset:2 },
+      { label:'Add Activity "Confirm EM Delivery"', anchor:'contractDate', offset:3 },
+      { label:'Add DD Date and Closing Date to Calendar', anchor:'contractDate', offset:0 },
+      { label:'Add Activity "DD Date is TOMORROW!"', anchor:'ddDate', offset:-1 },
+      { label:'Deliver DD to Seller/Get signed "Page 17"', anchor:'ddDate', offset:-2 },
+      { label:'Intro Email to Closing Attorney', anchor:'contractDate', offset:3 },
+      { label:'Ask Beth UC Sign Topper', anchor:'contractDate', offset:2 },
+      { label:'Confirm Sellers are prepared for Inspections', anchor:'inspectionDate', offset:-2 },
+      { label:'Send BA Signed "Page 17"', anchor:'ddDate', offset:-1 },
+      { label:'Confirm all Required Documents in Loop and Submit', anchor:'closingDate', offset:-7 },
+      { label:'Inform/Email Sellers of Closing DATE/TIME', anchor:'closingDate', offset:-5 },
+      { label:'Is the house empty - ask about the keys?', anchor:'closingDate', offset:-7 },
+    ]},
+    { section:'New File Checklist', items:[
+      { label:'Send Smartplan "We\'re under Contract-Seller"', anchor:'contractDate', offset:0 },
+      { label:'Change MLS Status', anchor:'contractDate', offset:0 },
+      { label:'Check all Dotloop documents for Completion', anchor:'contractDate', offset:1 },
+      { label:'Upload Initial Documents to Command/Submit', anchor:'contractDate', offset:1 },
+      { label:'Print Needed Documents for File', anchor:'contractDate', offset:2 },
+      { label:'Complete Seller Info Sheet for File', anchor:'contractDate', offset:2 },
+      { label:'Create Closing in TP', anchor:'contractDate', offset:1 },
+      { label:'Add/Remove any Smart plans on Command', anchor:'contractDate', offset:1 },
+      { label:'Introduction Call and Email to Sellers', anchor:'contractDate', offset:1 },
+      { label:'Introduction Call and Email to Buying Agent', anchor:'contractDate', offset:2 },
+      { label:'Send Executed OTP to Seller', anchor:'contractDate', offset:1 },
+      { label:'Add DD/Closing Dates to Calendars', anchor:'contractDate', offset:0 },
+      { label:'Copy DD/EM Check and Upload to Room', anchor:'contractDate', offset:3 },
+      { label:'Does Beth want UC Sign Topper', anchor:'contractDate', offset:2 },
+      { label:'Deliver DD Check to Seller/Get signed page 17', anchor:'ddDate', offset:-2 },
+      { label:'Send Signed Page 17 to BA', anchor:'ddDate', offset:-1 },
+      { label:'Confirm Sellers are prepared for Inspections', anchor:'inspectionDate', offset:-2 },
+      { label:'Inform Sellers of Closing Date and Time', anchor:'closingDate', offset:-5 },
+      { label:'Intro Email to Closing Atty', anchor:'contractDate', offset:3 },
+    ]},
+    { section:'Due Diligence Period', items:[
+      { label:'Email BA about Appraisal schedule', anchor:'contractDate', offset:5 },
+      { label:'Monitor DD period deadlines', anchor:'ddDate', offset:-3 },
+      { label:'Follow up on inspection repairs if needed', anchor:'inspectionDate', offset:3 },
+      { label:'Confirm appraisal completed', anchor:'ddDate', offset:-5 },
+      { label:'Review appraisal results with Beth', anchor:'ddDate', offset:-4 },
+      { label:'Track any amendment requests', anchor:'ddDate', offset:-3 },
+    ]},
+    { section:'Before Closing', items:[
+      { label:'Confirm closing date/time with all parties', anchor:'closingDate', offset:-10 },
+      { label:'Confirm sellers have keys ready', anchor:'closingDate', offset:-7 },
+      { label:'Schedule walkthrough', anchor:'closingDate', offset:-7 },
+      { label:'Confirm staging pickup date', anchor:'closingDate', offset:-5 },
+      { label:'Verify all documents submitted to attorney', anchor:'closingDate', offset:-5 },
+      { label:'Confirm wire instructions sent to sellers', anchor:'closingDate', offset:-3 },
+      { label:'Final review of closing disclosure', anchor:'closingDate', offset:-2 },
+      { label:'Send closing reminder to sellers', anchor:'closingDate', offset:-1 },
+    ]},
+    { section:'After Closing', items:[
+      { label:'Confirm closing completed', anchor:'closingDate', offset:0 },
+      { label:'Update MLS status to Sold', anchor:'closingDate', offset:0 },
+      { label:'Update Command opportunity to Closed', anchor:'closingDate', offset:0 },
+      { label:'Send congratulations to sellers', anchor:'closingDate', offset:0 },
+      { label:'Remove lockbox and sign', anchor:'closingDate', offset:1 },
+      { label:'Update CTE tracker', anchor:'closingDate', offset:1 },
+      { label:'Request review/testimonial', anchor:'closingDate', offset:3 },
+      { label:'Add to past client list', anchor:'closingDate', offset:5 },
+    ]},
+  ],
+  Buyer: [
+    { section:'New Under Contract', items:[
+      { label:'Complete Buyer Info Sheet for File', anchor:'contractDate', offset:0 },
+      { label:'Change status in system', anchor:'contractDate', offset:0 },
+      { label:'Send Smart Plan "We\'re under contract - Buyer"', anchor:'contractDate', offset:0 },
+      { label:'Introduction Call to Buyers', anchor:'contractDate', offset:1 },
+      { label:'Send Intro Email to Buyers', anchor:'contractDate', offset:1 },
+      { label:'Intro Email to Listing Agent', anchor:'contractDate', offset:1 },
+      { label:'Send Executed OTP to Buyers', anchor:'contractDate', offset:1 },
+      { label:'Add DD Date and Closing Date to Calendar', anchor:'contractDate', offset:0 },
+      { label:'Schedule Home Inspection', anchor:'contractDate', offset:2 },
+      { label:'Intro Email to Closing Attorney', anchor:'contractDate', offset:3 },
+      { label:'Confirm Buyers understand DD process', anchor:'contractDate', offset:1 },
+      { label:'Add Activity "DD Date is TOMORROW!"', anchor:'ddDate', offset:-1 },
+    ]},
+    { section:'New File Checklist', items:[
+      { label:'Send Smartplan "We\'re under Contract-Buyer"', anchor:'contractDate', offset:0 },
+      { label:'Check all Dotloop documents for Completion', anchor:'contractDate', offset:1 },
+      { label:'Upload Initial Documents to Command/Submit', anchor:'contractDate', offset:1 },
+      { label:'Print Needed Documents for File', anchor:'contractDate', offset:2 },
+      { label:'Complete Buyer Info Sheet for File', anchor:'contractDate', offset:2 },
+      { label:'Create Closing in TP', anchor:'contractDate', offset:1 },
+      { label:'Introduction Call and Email to Buyers', anchor:'contractDate', offset:1 },
+      { label:'Introduction Call and Email to Listing Agent', anchor:'contractDate', offset:2 },
+      { label:'Send Executed OTP to Buyer', anchor:'contractDate', offset:1 },
+      { label:'Add DD/Closing Dates to Calendars', anchor:'contractDate', offset:0 },
+      { label:'Copy DD/EM Check and Upload to Room', anchor:'contractDate', offset:3 },
+      { label:'Confirm Buyers are prepared for Inspections', anchor:'inspectionDate', offset:-2 },
+      { label:'Inform Buyers of Closing Date and Time', anchor:'closingDate', offset:-5 },
+      { label:'Intro Email to Closing Atty', anchor:'contractDate', offset:3 },
+    ]},
+    { section:'Due Diligence Period', items:[
+      { label:'Schedule home inspection', anchor:'contractDate', offset:3 },
+      { label:'Review inspection report with Beth', anchor:'inspectionDate', offset:2 },
+      { label:'Submit repair request if needed', anchor:'inspectionDate', offset:3 },
+      { label:'Order appraisal', anchor:'contractDate', offset:5 },
+      { label:'Track appraisal timeline', anchor:'ddDate', offset:-7 },
+      { label:'Review appraisal results', anchor:'ddDate', offset:-4 },
+      { label:'Monitor DD period deadlines', anchor:'ddDate', offset:-3 },
+    ]},
+    { section:'Before Closing', items:[
+      { label:'Confirm closing date/time with all parties', anchor:'closingDate', offset:-10 },
+      { label:'Schedule final walkthrough', anchor:'closingDate', offset:-3 },
+      { label:'Verify all documents submitted to attorney', anchor:'closingDate', offset:-5 },
+      { label:'Review closing disclosure', anchor:'closingDate', offset:-2 },
+      { label:'Confirm buyers have funds ready', anchor:'closingDate', offset:-3 },
+      { label:'Send closing reminder to buyers', anchor:'closingDate', offset:-1 },
+    ]},
+    { section:'After Closing', items:[
+      { label:'Confirm closing completed', anchor:'closingDate', offset:0 },
+      { label:'Update system status to Closed', anchor:'closingDate', offset:0 },
+      { label:'Send congratulations to buyers', anchor:'closingDate', offset:0 },
+      { label:'Update CTE tracker', anchor:'closingDate', offset:1 },
+      { label:'Request review/testimonial', anchor:'closingDate', offset:3 },
+      { label:'Add to past client list', anchor:'closingDate', offset:5 },
+      { label:'Send housewarming gift', anchor:'closingDate', offset:7 },
+    ]},
+  ],
+  'Buyer NC': [
+    { section:'New Under Contract', items:[
+      { label:'Complete Buyer Info Sheet for File', anchor:'contractDate', offset:0 },
+      { label:'Change status in system', anchor:'contractDate', offset:0 },
+      { label:'Send Smart Plan "New Construction Buyer"', anchor:'contractDate', offset:0 },
+      { label:'Introduction Call to Buyers', anchor:'contractDate', offset:1 },
+      { label:'Send Intro Email to Buyers', anchor:'contractDate', offset:1 },
+      { label:'Intro Email to Builder/Rep', anchor:'contractDate', offset:1 },
+      { label:'Send Executed OTP to Buyers', anchor:'contractDate', offset:1 },
+      { label:'Track Construction Timeline', anchor:'contractDate', offset:7 },
+      { label:'Add milestone dates to Calendar', anchor:'contractDate', offset:2 },
+      { label:'Intro Email to Closing Attorney', anchor:'contractDate', offset:3 },
+    ]},
+    { section:'Construction Phase', items:[
+      { label:'Monitor construction progress', anchor:'closingDate', offset:-30 },
+      { label:'Schedule site visits', anchor:'closingDate', offset:-21 },
+      { label:'Review any change orders', anchor:'closingDate', offset:-21 },
+      { label:'Track completion milestones', anchor:'closingDate', offset:-14 },
+      { label:'Confirm final walkthrough date', anchor:'closingDate', offset:-7 },
+      { label:'Review builder warranty info', anchor:'closingDate', offset:-7 },
+    ]},
+    { section:'Before Closing', items:[
+      { label:'Schedule final walkthrough with builder', anchor:'closingDate', offset:-5 },
+      { label:'Punch list review', anchor:'closingDate', offset:-3 },
+      { label:'Confirm closing date/time', anchor:'closingDate', offset:-7 },
+      { label:'Verify all documents submitted', anchor:'closingDate', offset:-5 },
+      { label:'Review closing disclosure', anchor:'closingDate', offset:-2 },
+      { label:'Confirm buyers have funds ready', anchor:'closingDate', offset:-3 },
+    ]},
+    { section:'After Closing', items:[
+      { label:'Confirm closing completed', anchor:'closingDate', offset:0 },
+      { label:'Update system status to Closed', anchor:'closingDate', offset:0 },
+      { label:'Send congratulations to buyers', anchor:'closingDate', offset:0 },
+      { label:'Update CTE tracker', anchor:'closingDate', offset:1 },
+      { label:'Request review/testimonial', anchor:'closingDate', offset:3 },
+      { label:'Add to past client list', anchor:'closingDate', offset:5 },
+    ]},
+  ],
+};
+
+// ── Compute all tasks with due dates for a closing property ──
+function getAllTasksWithDates(property) {
+  const type = property.type || 'Seller';
+  const sections = CLOSING_CHECKLIST_SECTIONS[type] || CLOSING_CHECKLIST_SECTIONS.Seller;
+  const checkedItems = property.checkedItems || {};
+  const tasks = [];
+  sections.forEach((sec, si) => {
+    sec.items.forEach((item, ii) => {
+      const anchorVal = property[item.anchor];
+      const dueDate = anchorVal ? addDays(anchorVal, item.offset) : null;
+      const isChecked = !!checkedItems[`${si}-${ii}`];
+      const urg = getUrgency(dueDate, isChecked);
+      tasks.push({
+        propertyId: property.id,
+        address: property.address || 'Unknown',
+        name: property.name || '',
+        section: sec.section,
+        sectionIdx: si,
+        itemIdx: ii,
+        label: item.label,
+        anchor: item.anchor,
+        dueDate,
+        isChecked,
+        urgency: urg,
+      });
+    });
+  });
+  return tasks;
+}
+
+// ── Shared Components ──
+function FieldInput({ field, value, onChange, disabled }) {
+  const base = "w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white";
+  const dis = disabled ? "bg-gray-50 text-gray-500 cursor-not-allowed" : "";
+  if (field.type==='textarea') return <textarea value={value||''} onChange={e=>onChange(field.key,e.target.value)} disabled={disabled} className={`${base} ${dis}`} rows={2}/>;
+  if (field.type==='select') return <select value={value||''} onChange={e=>onChange(field.key,e.target.value)} disabled={disabled} className={`${base} ${dis}`}>{field.options.map(o=><option key={o} value={o}>{o||'—'}</option>)}</select>;
+  return <input type={field.type} value={value||''} onChange={e=>onChange(field.key,e.target.value)} disabled={disabled} className={`${base} ${dis}`}/>;
+}
+
+// ── MAIN DASHBOARD ──
+function MainDashboard({ preListings, activeListings, closings, onNavigate }) {
+  const allTasks = useMemo(() => {
+    return closings.flatMap(p => getAllTasksWithDates(p));
+  }, [closings]);
+
+  const overdue = allTasks.filter(t => t.urgency==='overdue');
+  const dueToday = allTasks.filter(t => t.urgency==='today');
+  const dueWeek = allTasks.filter(t => t.urgency==='week');
+
+  const TaskRow = ({ task, color, bgColor }) => (
+    <div className={`flex items-center gap-3 px-3 py-2 rounded-lg ${bgColor} cursor-pointer hover:opacity-80`}
+      onClick={() => onNavigate(task.propertyId)}>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-gray-800 truncate">{task.label}</p>
+        <p className="text-xs text-gray-500 truncate">{task.address} &middot; {task.section}</p>
+      </div>
+      <span className={`text-xs font-medium whitespace-nowrap ${color}`}>{fmtShort(task.dueDate)}</span>
+    </div>
+  );
+
+  return (
+    <div className="fade-in">
+      {/* Counter Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+        <div className="bg-white rounded-xl border border-gray-200 p-5 text-center cursor-pointer hover:shadow-md transition-shadow"
+          onClick={() => onNavigate('tab-pre')}>
+          <p className="text-3xl font-bold text-blue-600">{preListings.length}</p>
+          <p className="text-sm text-gray-500 mt-1">Sellers Signed</p>
+          <p className="text-xs text-gray-400">Pre-Listing Pipeline</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-5 text-center cursor-pointer hover:shadow-md transition-shadow"
+          onClick={() => onNavigate('tab-active')}>
+          <p className="text-3xl font-bold text-green-600">{activeListings.length}</p>
+          <p className="text-sm text-gray-500 mt-1">Active on MLS</p>
+          <p className="text-xs text-gray-400">Currently Listed</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-5 text-center cursor-pointer hover:shadow-md transition-shadow"
+          onClick={() => onNavigate('tab-closing')}>
+          <p className="text-3xl font-bold text-purple-600">{closings.length}</p>
+          <p className="text-sm text-gray-500 mt-1">Under Contract</p>
+          <p className="text-xs text-gray-400">In Closing Process</p>
+        </div>
+      </div>
+
+      {/* Task Reminders */}
+      <h2 className="text-lg font-bold text-gray-800 mb-4">Upcoming Tasks & Reminders</h2>
+
+      {overdue.length===0 && dueToday.length===0 && dueWeek.length===0 ? (
+        <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400">
+          <svg className="w-10 h-10 mx-auto mb-2 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <p className="text-sm">All caught up! No urgent tasks right now.</p>
+          <p className="text-xs mt-1">Add closing dates to properties to see task reminders here.</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {overdue.length > 0 && (
+            <div className="bg-white rounded-xl border border-red-200 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                <h3 className="font-semibold text-red-700">Overdue</h3>
+                <span className="badge bg-red-100 text-red-700">{overdue.length}</span>
+              </div>
+              <div className="space-y-1.5">{overdue.slice(0,10).map((t,i) => <TaskRow key={i} task={t} color="text-red-600" bgColor="bg-red-50"/>)}</div>
+              {overdue.length > 10 && <p className="text-xs text-red-400 mt-2">+ {overdue.length-10} more overdue tasks</p>}
+            </div>
+          )}
+
+          {dueToday.length > 0 && (
+            <div className="bg-white rounded-xl border border-amber-200 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                <h3 className="font-semibold text-amber-700">Due Today</h3>
+                <span className="badge bg-amber-100 text-amber-700">{dueToday.length}</span>
+              </div>
+              <div className="space-y-1.5">{dueToday.map((t,i) => <TaskRow key={i} task={t} color="text-amber-600" bgColor="bg-amber-50"/>)}</div>
+            </div>
+          )}
+
+          {dueWeek.length > 0 && (
+            <div className="bg-white rounded-xl border border-blue-200 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+                <h3 className="font-semibold text-blue-700">Due This Week</h3>
+                <span className="badge bg-blue-100 text-blue-700">{dueWeek.length}</span>
+              </div>
+              <div className="space-y-1.5">{dueWeek.slice(0,15).map((t,i) => <TaskRow key={i} task={t} color="text-blue-600" bgColor="bg-blue-50"/>)}</div>
+              {dueWeek.length > 15 && <p className="text-xs text-blue-400 mt-2">+ {dueWeek.length-15} more this week</p>}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Property Form ──
+function PropertyForm({ property, fields, onUpdate, onBack }) {
+  const handleChange = (key, val) => onUpdate({ ...property, [key]: val });
+  return (
+    <div className="fade-in">
+      <button onClick={onBack} className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 mb-4">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"/></svg> Back
+      </button>
+      <h2 className="text-xl font-bold text-gray-900 mb-1">{property.address||property.name||'New Listing'}</h2>
+      <p className="text-sm text-gray-500 mb-4">{property.name||''}</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-white rounded-xl border border-gray-200 p-6">
+        {fields.map(f => (
+          <div key={f.key} className={f.type==='textarea'?'md:col-span-2':''}>
+            <label className="block text-xs font-medium text-gray-500 mb-1">{f.label}</label>
+            <FieldInput field={f} value={property[f.key]} onChange={handleChange}/>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Pre-Listing Dashboard ──
+function PreListingDashboard({ listings, onUpdate, onView, onAdd, onMoveToActive }) {
+  return (
+    <div className="fade-in">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-bold text-gray-800">Pre-Listing Pipeline</h2>
+        <button onClick={onAdd} className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 flex items-center gap-1.5">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"/></svg> Add a Listing
+        </button>
+      </div>
+      {listings.length===0 ? (
+        <div className="text-center py-16 text-gray-400"><p className="text-sm">No pre-listings yet. Click "Add a Listing" to get started.</p></div>
+      ) : (
+        <div className="space-y-3">{listings.map(p => (
+          <div key={p.id} className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-sm transition-shadow">
+            <div className="flex items-start justify-between mb-3">
+              <div className="cursor-pointer" onClick={()=>onView(p.id)}>
+                <h3 className="font-semibold text-gray-900 hover:text-blue-600">{p.address||'No Address'}</h3>
+                <p className="text-sm text-gray-500">{p.name||'No Seller Name'}</p>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={()=>onView(p.id)} className="px-3 py-1.5 text-xs bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200">Edit Sheet</button>
+                <button onClick={()=>onMoveToActive(p.id)} className="px-3 py-1.5 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">Listed / On MLS</button>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-x-4 gap-y-2 text-xs">
+              {[{l:'Live Date',v:fmtDate(p.expectedLiveDate)},{l:'Est. Price',v:p.estimatedPrice||'—'},{l:'Photos',v:fmtDate(p.photosDate)},{l:'Disclosures',v:p.disclosuresSigned==='Yes'?'Signed':p.disclosuresSent==='Yes'?'Sent':'—'},{l:'MLS Input',v:p.mlsInputSheet||'—'},{l:'Measurements',v:p.measurements||'—'}].map((item,i)=>(
+                <div key={i}><span className="text-gray-400">{item.l}</span><p className="font-medium text-gray-700">{item.v}</p></div>
+              ))}
+            </div>
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <label className="text-xs text-gray-400">Notes (editable)</label>
+              <textarea value={p.notes||''} onChange={e=>onUpdate({...p,notes:e.target.value})} className="w-full mt-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" rows={2} placeholder="Add notes here..."/>
+            </div>
+          </div>
+        ))}</div>
+      )}
+    </div>
+  );
+}
+
+// ── Active Listings Dashboard ──
+function ActiveListingsDashboard({ actives, onUpdate, onView, onMoveToClosing }) {
+  const [expanded, setExpanded] = useState({});
+  const [addingWeekly, setAddingWeekly] = useState(null);
+  const [wf, setWf] = useState({});
+  const addEntry = (id) => {
+    const prop = actives.find(p=>p.id===id);
+    onUpdate({ ...prop, weeklyLog:[...(prop.weeklyLog||[]),{id:uid(),date:todayStr(),...wf}] });
+    setAddingWeekly(null); setWf({});
+  };
+  return (
+    <div className="fade-in">
+      <h2 className="text-lg font-bold text-gray-800 mb-4">Active Listings (On MLS)</h2>
+      {actives.length===0 ? <div className="text-center py-16 text-gray-400"><p className="text-sm">No active listings.</p></div> : (
+        <div className="space-y-4">{actives.map(p=>{
+          const dom=p.listDate?daysBetween(p.listDate,todayStr()):0;
+          const ts=(p.weeklyLog||[]).reduce((s,w)=>s+(parseInt(w.showings)||0),0);
+          const wc=(p.weeklyLog||[]).length;
+          return (
+            <div key={p.id} className="bg-white rounded-xl border border-gray-200 p-4">
+              <div className="flex items-start justify-between mb-3">
+                <div className="cursor-pointer" onClick={()=>onView(p.id)}>
+                  <h3 className="font-semibold text-gray-900 hover:text-blue-600">{p.address||'No Address'}</h3>
+                  <p className="text-sm text-gray-500">{p.name} &middot; Listed {fmtDate(p.listDate)}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={()=>onView(p.id)} className="px-3 py-1.5 text-xs bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200">Edit</button>
+                  <button onClick={()=>onMoveToClosing(p.id)} className="px-3 py-1.5 text-xs bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium">Under Contract</button>
+                </div>
+              </div>
+              <div className="grid grid-cols-4 gap-4 mb-3">
+                {[{l:'DOM',v:dom,c:'text-blue-600'},{l:'Showings',v:ts,c:'text-green-600'},{l:'Weeks',v:wc,c:'text-gray-600'},{l:'Price',v:p.estimatedPrice||'—',c:'text-gray-800'}].map((s,i)=>(
+                  <div key={i} className="text-center p-2 bg-gray-50 rounded-lg">
+                    <p className={`text-lg font-bold ${s.c}`}>{s.v}</p><p className="text-xs text-gray-400">{s.l}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="border-t border-gray-100 pt-2">
+                <button onClick={()=>setExpanded(x=>({...x,[p.id]:!x[p.id]}))} className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
+                  <svg className={`w-4 h-4 transition-transform ${expanded[p.id]?'rotate-90':''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"/></svg>
+                  Weekly History ({wc})
+                </button>
+                {expanded[p.id] && (
+                  <div className="mt-2 space-y-2">
+                    {(p.weeklyLog||[]).map((w,wi)=>(
+                      <div key={w.id} className="flex gap-4 text-xs bg-gray-50 rounded-lg p-2">
+                        <span className="text-gray-500 font-medium w-24">Wk {wi+1} ({fmtShort(w.date)})</span>
+                        <span>Show: <b>{w.showings||0}</b></span><span>FB Miss: <b>{w.feedbackMissing||0}</b></span>
+                        <span>Exp: <b>{w.overallExposure||0}</b></span>
+                        {w.notes&&<span className="text-gray-400 truncate flex-1">{w.notes}</span>}
+                      </div>
+                    ))}
+                    {addingWeekly===p.id?(
+                      <div className="bg-blue-50 rounded-lg p-3 space-y-2">
+                        <div className="grid grid-cols-3 gap-2">
+                          {[{k:'showings',l:'Showings'},{k:'feedbackMissing',l:'FB Missing'},{k:'overallExposure',l:'Exposure'}].map(f=>(
+                            <div key={f.k}><label className="text-xs text-gray-500">{f.l}</label>
+                              <input type="number" value={wf[f.k]||''} onChange={e=>setWf({...wf,[f.k]:e.target.value})} className="w-full px-2 py-1 border rounded text-sm"/></div>
+                          ))}
+                        </div>
+                        <textarea value={wf.notes||''} onChange={e=>setWf({...wf,notes:e.target.value})} placeholder="Notes..." className="w-full px-2 py-1 border rounded text-sm" rows={1}/>
+                        <div className="flex gap-2">
+                          <button onClick={()=>addEntry(p.id)} className="px-3 py-1 bg-blue-600 text-white text-xs rounded">Save</button>
+                          <button onClick={()=>{setAddingWeekly(null);setWf({});}} className="px-3 py-1 bg-gray-200 text-xs rounded">Cancel</button>
+                        </div>
+                      </div>
+                    ):<button onClick={()=>setAddingWeekly(p.id)} className="text-xs text-blue-600 hover:text-blue-800 font-medium">+ Add Weekly Entry</button>}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}</div>
+      )}
+    </div>
+  );
+}
+
+// ── Closing Checklist with conditional formatting ──
+function ClosingChecklistSection({ property, onUpdate }) {
+  const type = property.type||'Seller';
+  const sections = CLOSING_CHECKLIST_SECTIONS[type]||CLOSING_CHECKLIST_SECTIONS.Seller;
+  const checked = property.checkedItems||{};
+  const toggle = (si,ii) => {
+    const key=`${si}-${ii}`;
+    onUpdate({...property, checkedItems:{...checked,[key]:!checked[key]}});
+  };
+  return (
+    <div className="space-y-4 mt-4">{sections.map((sec,si)=>{
+      const total=sec.items.length;
+      const done=sec.items.filter((_,ii)=>checked[`${si}-${ii}`]).length;
+      const pct=total>0?Math.round((done/total)*100):0;
+      return (
+        <div key={si} className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="font-semibold text-gray-800">{sec.section}</h4>
+            <span className="text-xs text-gray-400">{done}/{total} ({pct}%)</span>
+          </div>
+          <div className="progress-bar mb-3"><div className="progress-fill" style={{width:`${pct}%`,background:pct===100?'#22c55e':'#3b82f6'}}/></div>
+          <div className="space-y-1">{sec.items.map((item,ii)=>{
+            const isChecked=!!checked[`${si}-${ii}`];
+            const anchorVal=property[item.anchor];
+            const dueDate=anchorVal?addDays(anchorVal,item.offset):null;
+            const urg=getUrgency(dueDate,isChecked);
+            return (
+              <label key={ii} className={`flex items-start gap-2 py-1.5 px-2 rounded-lg cursor-pointer transition-colors ${isChecked?'opacity-50':urgencyClass[urg]} hover:opacity-80`}>
+                <input type="checkbox" checked={isChecked} onChange={()=>toggle(si,ii)} className="mt-0.5"/>
+                <div className="flex-1 min-w-0">
+                  <span className={`text-sm ${isChecked?'line-through text-gray-400':'text-gray-700'}`}>{item.label}</span>
+                </div>
+                {dueDate && (
+                  <span className={`text-xs whitespace-nowrap font-medium ${isChecked?'text-gray-300':urgencyColor[urg]}`}>
+                    {urg==='overdue'&&!isChecked?'OVERDUE ':''}{fmtShort(dueDate)}
+                  </span>
+                )}
+              </label>
+            );
+          })}</div>
+        </div>
+      );
+    })}</div>
+  );
+}
+
+// ── Closings Dashboard ──
+function ClosingsDashboard({ closings, onUpdate, onView }) {
+  return (
+    <div className="fade-in">
+      <h2 className="text-lg font-bold text-gray-800 mb-4">Under Contract / Closings</h2>
+      {closings.length===0?<div className="text-center py-16 text-gray-400"><p className="text-sm">No properties under contract.</p></div>:(
+        <div className="space-y-4">{closings.map(p=>{
+          const type=p.type||'Seller';
+          const sections=CLOSING_CHECKLIST_SECTIONS[type]||CLOSING_CHECKLIST_SECTIONS.Seller;
+          const ci=p.checkedItems||{};
+          const totalItems=sections.reduce((s,sec)=>s+sec.items.length,0);
+          const totalDone=sections.reduce((s,sec,si)=>s+sec.items.filter((_,ii)=>ci[`${si}-${ii}`]).length,0);
+          const pct=totalItems>0?Math.round((totalDone/totalItems)*100):0;
+          const tasks=getAllTasksWithDates(p);
+          const overdueCount=tasks.filter(t=>t.urgency==='overdue').length;
+          const todayCount=tasks.filter(t=>t.urgency==='today').length;
+          const tc=type==='Seller'?'bg-red-100 text-red-700':type==='Buyer NC'?'bg-orange-100 text-orange-700':'bg-blue-100 text-blue-700';
+          return (
+            <div key={p.id} className="bg-white rounded-xl border border-gray-200 p-4">
+              <div className="flex items-start justify-between mb-3">
+                <div className="cursor-pointer" onClick={()=>onView(p.id)}>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-gray-900 hover:text-blue-600">{p.address||'No Address'}</h3>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${tc}`}>{type}</span>
+                    {overdueCount>0&&<span className="badge bg-red-100 text-red-600">{overdueCount} overdue</span>}
+                    {todayCount>0&&<span className="badge bg-amber-100 text-amber-600">{todayCount} today</span>}
+                  </div>
+                  <p className="text-sm text-gray-500">{p.name} &middot; Closing {fmtDate(p.closingDate)}</p>
+                </div>
+                <button onClick={()=>onView(p.id)} className="px-3 py-1.5 text-xs bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200">View Details</button>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-3 text-xs">
+                {[{l:'Purchase Price',v:p.pp||'—'},{l:'Contract Date',v:fmtDate(p.contractDate)},{l:'DD Date',v:fmtDate(p.ddDate)},{l:'Closing Date',v:fmtDate(p.closingDate)},{l:'Attorney',v:p.attorney||'—'}].map((s,i)=>(
+                  <div key={i}><span className="text-gray-400">{s.l}</span><p className="font-medium text-gray-700">{s.v}</p></div>
+                ))}
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="progress-bar flex-1"><div className="progress-fill" style={{width:`${pct}%`,background:pct===100?'#22c55e':'#3b82f6'}}/></div>
+                <span className="text-xs font-medium text-gray-500">{totalDone}/{totalItems} ({pct}%)</span>
+              </div>
+            </div>
+          );
+        })}</div>
+      )}
+    </div>
+  );
+}
+
+// ── Closing Detail View ──
+function ClosingDetailView({ property, onUpdate, onBack }) {
+  const handleChange = (key, val) => onUpdate({...property,[key]:val});
+  return (
+    <div className="fade-in">
+      <button onClick={onBack} className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 mb-4">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"/></svg> Back
+      </button>
+      <h2 className="text-xl font-bold text-gray-900 mb-1">{property.address||'Property'}</h2>
+      <p className="text-sm text-gray-500 mb-4">{property.name} &middot; {property.type||'Seller'}</p>
+      <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4">
+        <h3 className="font-semibold text-gray-800 mb-3">Contract Details</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {CLOSING_OVERVIEW_FIELDS.map(f=>(
+            <div key={f.key} className={f.type==='textarea'?'md:col-span-3':''}>
+              <label className="block text-xs font-medium text-gray-500 mb-1">{f.label}</label>
+              <FieldInput field={f} value={property[f.key]} onChange={handleChange}/>
+            </div>
+          ))}
+        </div>
+      </div>
+      <h3 className="font-semibold text-gray-800 mb-2">Checklists</h3>
+      <ClosingChecklistSection property={property} onUpdate={onUpdate}/>
+    </div>
+  );
+}
+
+// ── APP ──
+function App() {
+  const [preListings, setPreListings] = useState(()=>load('re_prelistings',IMPORTED_PRE_LISTINGS));
+  const [activeListings, setActiveListings] = useState(()=>load('re_active',IMPORTED_ACTIVE_LISTINGS));
+  const [closings, setClosings] = useState(()=>load('re_closings',IMPORTED_CLOSINGS));
+  const [tab, setTab] = useState('dashboard');
+  const [viewingId, setViewingId] = useState(null);
+  const [viewCtx, setViewCtx] = useState(null);
+
+  useEffect(()=>{save('re_prelistings',preListings);},[preListings]);
+  useEffect(()=>{save('re_active',activeListings);},[activeListings]);
+  useEffect(()=>{save('re_closings',closings);},[closings]);
+
+  const updatePre = (u) => setPreListings(prev=>prev.map(p=>p.id===u.id?u:p));
+  const updateActive = (u) => setActiveListings(prev=>prev.map(p=>p.id===u.id?u:p));
+  const updateClosing = (u) => setClosings(prev=>prev.map(p=>p.id===u.id?u:p));
+
+  const addListing = () => { const n={id:uid(),createdAt:Date.now()}; setPreListings(prev=>[n,...prev]); setViewingId(n.id); setViewCtx('pre'); };
+
+  const moveToActive = (id) => {
+    const p=preListings.find(x=>x.id===id); if(!p) return;
+    if(!confirm(`Move "${p.address||'this property'}" to Active Listings?`)) return;
+    setPreListings(prev=>prev.filter(x=>x.id!==id));
+    setActiveListings(prev=>[{...p,listDate:p.expectedLiveDate||todayStr(),weeklyLog:[]}, ...prev]);
+    setTab('active');
+  };
+  const moveToClosing = (id) => {
+    const p=activeListings.find(x=>x.id===id); if(!p) return;
+    if(!confirm(`Move "${p.address||'this property'}" to Under Contract?`)) return;
+    setActiveListings(prev=>prev.filter(x=>x.id!==id));
+    setClosings(prev=>[{...p,type:'Seller',contractDate:todayStr(),checkedItems:{}}, ...prev]);
+    setTab('closing');
+  };
+
+  const openView = (id,ctx) => { setViewingId(id); setViewCtx(ctx); };
+  const closeView = () => { setViewingId(null); setViewCtx(null); };
+
+  const handleDashboardNav = (target) => {
+    if (target.startsWith('tab-')) { setTab(target.replace('tab-','')); return; }
+    // Navigate to a specific closing property
+    setViewingId(target); setViewCtx('closing'); setTab('closing');
+  };
+
+  const viewedProp = viewingId ? (
+    viewCtx==='pre'?preListings.find(p=>p.id===viewingId):
+    viewCtx==='active'?activeListings.find(p=>p.id===viewingId):
+    closings.find(p=>p.id===viewingId)
+  ) : null;
+
+  const counts = { pre:preListings.length, active:activeListings.length, closing:closings.length };
+
+  return (
+    <div className="max-w-5xl mx-auto px-4 py-6">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Listing Manager</h1>
+        <p className="text-sm text-gray-500">The Beth Sauer Team &middot; Keller Williams One Realty</p>
+      </div>
+
+      {!viewingId && (
+        <div className="flex gap-6 border-b border-gray-200 mb-6 overflow-x-auto">
+          {[
+            {key:'dashboard',label:'Dashboard',icon:'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4'},
+            {key:'pre',label:'Pre-Listing',count:counts.pre,color:'bg-blue-100 text-blue-700'},
+            {key:'active',label:'Active Listings',count:counts.active,color:'bg-green-100 text-green-700'},
+            {key:'closing',label:'Under Contract',count:counts.closing,color:'bg-purple-100 text-purple-700'},
+          ].map(t=>(
+            <button key={t.key} onClick={()=>setTab(t.key)}
+              className={`pb-3 px-1 text-sm flex items-center gap-2 whitespace-nowrap transition-colors ${tab===t.key?'tab-active':'text-gray-500 hover:text-gray-700'}`}>
+              {t.icon && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={t.icon}/></svg>}
+              {t.label}
+              {t.count>0 && <span className={`badge ${t.color}`}>{t.count}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {viewingId && viewedProp ? (
+        viewCtx==='closing' ? <ClosingDetailView property={viewedProp} onUpdate={updateClosing} onBack={closeView}/> :
+        <PropertyForm property={viewedProp} fields={PRE_LISTING_FIELDS} onUpdate={viewCtx==='pre'?updatePre:updateActive} onBack={closeView}/>
+      ) : (
+        <>
+          {tab==='dashboard' && <MainDashboard preListings={preListings} activeListings={activeListings} closings={closings} onNavigate={handleDashboardNav}/>}
+          {tab==='pre' && <PreListingDashboard listings={preListings} onUpdate={updatePre} onView={id=>openView(id,'pre')} onAdd={addListing} onMoveToActive={moveToActive}/>}
+          {tab==='active' && <ActiveListingsDashboard actives={activeListings} onUpdate={updateActive} onView={id=>openView(id,'active')} onMoveToClosing={moveToClosing}/>}
+          {tab==='closing' && <ClosingsDashboard closings={closings} onUpdate={updateClosing} onView={id=>openView(id,'closing')}/>}
+        </>
+      )}
+      <div className="mt-8 text-center text-xs text-gray-300">Data saved locally in your browser</div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
